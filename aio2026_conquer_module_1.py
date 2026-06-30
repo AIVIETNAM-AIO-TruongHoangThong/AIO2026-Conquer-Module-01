@@ -11,7 +11,7 @@ Original file is located at
 """
 
 # Install and setup dependencies
-# !pip install datasets transformers scikit-learn matplotlib pandas torch torchvision
+#!pip install datasets transformers scikit-learn matplotlib pandas torch torchvision
 
 import os
 import random
@@ -320,9 +320,6 @@ def make_hard_negative(text):
 
 def calculate_retrieval_metrics(img_features, txt_features):
     num_samples = len(img_features)
-
-    # L2 Normalize features for cosine similarity
-    # Added 1e-8 to prevent division by zero
     img_norm = img_features / (
         np.linalg.norm(img_features, axis=1, keepdims=True) + 1e-8
     )
@@ -330,10 +327,9 @@ def calculate_retrieval_metrics(img_features, txt_features):
         np.linalg.norm(txt_features, axis=1, keepdims=True) + 1e-8
     )
 
-    # Compute all pairwise cosine similarities at once (Matrix Multiplication)
     sim_matrix = np.dot(img_norm, txt_norm.T)
 
-    # Sort indices in descending order of similarity
+    # Indices sort DESC of sims
     sorted_indices = np.argsort(sim_matrix, axis=1)[:, ::-1]
 
     # Find the rank of the ground truth (the diagonal where j == i)
@@ -344,7 +340,11 @@ def calculate_retrieval_metrics(img_features, txt_features):
     recall_at_5 = np.sum(ranks <= 5) / num_samples
     mrr = np.sum(1.0 / ranks) / num_samples
 
-    return {"R@1": recall_at_1, "R@5": recall_at_5, "MRR": mrr}
+    return {
+        "R@1": recall_at_1,
+        "R@5": recall_at_5,
+        "MRR": mrr,
+    }
 
 
 results = {
@@ -464,80 +464,43 @@ print("=" * 137)
 csv_path = os.path.join(SAVE_DIR, "results.csv")
 df_results.to_csv(csv_path, index=False)
 
-"""### 9. t-SNE Visualization"""
+"""### 9. Similarity Score Distribution"""
 
-tsne_idx = min(100, len(test_images))
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+methods = list(results.keys())
 
-m2_imgs = projected_test_resnet_features[:tsne_idx]
-m2_txts = test_tfidf_features[:tsne_idx]
+for idx, method in enumerate(methods):
+    ax = axes[idx]
 
-m3_imgs = test_clip_img_features[:tsne_idx]
-m3_txts = test_clip_txt_features[:tsne_idx]
-
-m2_combined = np.vstack([m2_imgs, m2_txts])
-
-perp = min(15, (tsne_idx * 2) // 3)
-
-tsne_m2 = TSNE(n_components=2, perplexity=perp, random_state=42).fit_transform(
-    m2_combined
-)
-
-m3_combined = np.vstack([m3_imgs, m3_txts])
-
-tsne_m3 = TSNE(n_components=2, perplexity=perp, random_state=42).fit_transform(
-    m3_combined
-)
-
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-
-# Method 2 (Linear Projection)
-ax1.scatter(
-    tsne_m2[:tsne_idx, 0],
-    tsne_m2[:tsne_idx, 1],
-    c="red",
-    alpha=0.7,
-    label="Projected Images",
-)
-
-ax1.scatter(
-    tsne_m2[tsne_idx:, 0],
-    tsne_m2[tsne_idx:, 1],
-    c="blue",
-    alpha=0.7,
-    label="TF-IDF Captions",
-)
-
-ax1.set_title("Method 2 (Linear Projection)")
-ax1.legend()
-
-
-# Method 3 (Pair Alignment)
-colors = plt.cm.tab20(np.linspace(0, 1, tsne_idx))
-
-for i in range(tsne_idx):
-    # Image
-    ax2.scatter(tsne_m3[i, 0], tsne_m3[i, 1], color=colors[i], marker="o", s=45)
-
-    # Caption
-    ax2.scatter(
-        tsne_m3[tsne_idx + i, 0],
-        tsne_m3[tsne_idx + i, 1],
-        color=colors[i],
-        marker="^",
-        s=45,
+    # Plot histograms
+    ax.hist(
+        results[method]["pos"], bins=20, alpha=0.5, label="Positive Pair", color="green"
+    )
+    ax.hist(
+        results[method]["rand"],
+        bins=20,
+        alpha=0.5,
+        label="Random Negative",
+        color="blue",
     )
 
-    # Connection
-    ax2.plot(
-        [tsne_m3[i, 0], tsne_m3[tsne_idx + i, 0]],
-        [tsne_m3[i, 1], tsne_m3[tsne_idx + i, 1]],
-        color=colors[i],
-        alpha=0.30,
-    )
+    if len(results[method]["hard"]) > 0:
+        ax.hist(
+            results[method]["hard"],
+            bins=20,
+            alpha=0.5,
+            label="Hard Negative",
+            color="red",
+        )
 
-ax2.set_title("Method 3 (CLIP Pair Alignment)")
+    ax.set_title(method)
+    ax.set_xlabel("Cosine Similarity")
+    ax.set_ylabel("Frequency")
+    ax.legend()
 
+plt.suptitle("Similarity Score Distribution", fontsize=16)
 plt.tight_layout()
+plt.subplots_adjust(top=0.85)
 plt.show()
 
 """### 10. CLIP Similarity Heatmap"""
@@ -632,6 +595,7 @@ for idx in demo_indices:
     print("-" * 90)
 
 """### 12. Error Analysis (Failure Cases)"""
+
 print("=" * 90)
 print("ERROR ANALYSIS (CLIP MODEL)")
 print("=" * 90)
@@ -685,6 +649,7 @@ if failure_idx != -1:
 print("-" * 90)
 
 """### 13. Ablation Study: TF-IDF Vocabulary Size"""
+
 print("=" * 90)
 print("ABLATION STUDY: TF-IDF VOCABULARY SIZE")
 print("=" * 90)

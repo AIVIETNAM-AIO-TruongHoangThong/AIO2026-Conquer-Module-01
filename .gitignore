@@ -13,3 +13,6 @@ wheels/
 CLAUDE.md
 AGENTS.md
 .claude
+
+# Misc
+.DS_STORE
