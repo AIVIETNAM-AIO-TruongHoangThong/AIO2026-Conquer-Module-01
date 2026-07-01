@@ -25,11 +25,16 @@ from transformers import CLIPProcessor, CLIPModel
 from datasets import load_dataset
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LinearRegression
-from sklearn.manifold import TSNE
 import warnings
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
+
+# Fix seeds so the random negatives and qualitative demos are reproducible
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
 
 """### 1. Google Drive Mounting"""
 
@@ -46,7 +51,7 @@ except ImportError:
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # device = torch.device('cpu')
 
-"""### 2. Pure Consine Similarity helper function"""
+"""### 2. Pure Cosine Similarity helper function"""
 
 
 def cosine_sim(a, b):
@@ -109,24 +114,25 @@ resnet_transforms = T.Compose(
 )
 
 
-# Helper function to extract ResNet features
-def extract_resnet_features(image_list):
+# Helper function to extract ResNet features (batched for speed)
+def extract_resnet_features(image_list, batch_size=64):
     features = []
     with torch.no_grad():
-        for img in image_list:
-            img_tensor = resnet_transforms(img).unsqueeze(0).to(device)
-            feature = resnet(img_tensor).cpu().numpy().flatten()
-            features.append(feature)
-    return np.array(features)
+        for start in range(0, len(image_list), batch_size):
+            batch = image_list[start : start + batch_size]
+            batch_tensor = torch.stack([resnet_transforms(img) for img in batch])
+            batch_tensor = batch_tensor.to(device)
+            features.append(resnet(batch_tensor).cpu().numpy())
+    return np.concatenate(features, axis=0)
 
 
-# Exract ResNet for both Train and Test sets
+# Extract ResNet for both Train and Test sets
 train_resnet_features = extract_resnet_features(train_images)
 test_resnet_features = extract_resnet_features(test_images)
 
 # 2. TF-IDF for Text Features
 vectorizer = TfidfVectorizer(max_features=500)
-# IMPORTANT! FIT on train to build vocab, but only TRASNFORM test
+# IMPORTANT! FIT on train to build vocab, but only TRANSFORM test
 train_tfidf_features = vectorizer.fit_transform(train_captions).toarray()
 test_tfidf_features = vectorizer.transform(test_captions).toarray()
 
@@ -136,27 +142,33 @@ clip_processor = CLIPProcessor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id).to(device).eval()
 
 
-# Helper function to extract CLIP features
-def extract_clip_features(image_list, caption_list):
+# Helper function to extract CLIP features (batched for speed)
+def extract_clip_features(image_list, caption_list, batch_size=32):
     img_features = []
     txt_features = []
     with torch.no_grad():
-        for img, cap in zip(image_list, caption_list):
+        for start in range(0, len(image_list), batch_size):
+            img_batch = image_list[start : start + batch_size]
+            cap_batch = caption_list[start : start + batch_size]
             inputs = clip_processor(
-                text=[cap], images=[img], return_tensors="pt", padding=True
+                text=cap_batch,
+                images=img_batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
             ).to(device)
             outputs = clip_model(**inputs)
 
             # Normalize CLIP embeddings
-            img = outputs.image_embeds
-            img = img / img.norm(dim=-1, keepdim=True)
+            img_emb = outputs.image_embeds
+            img_emb = img_emb / img_emb.norm(dim=-1, keepdim=True)
 
-            txt = outputs.text_embeds
-            txt = txt / txt.norm(dim=-1, keepdim=True)
+            txt_emb = outputs.text_embeds
+            txt_emb = txt_emb / txt_emb.norm(dim=-1, keepdim=True)
 
-            img_features.append(img.cpu().numpy().flatten())
-            txt_features.append(txt.cpu().numpy().flatten())
-    return np.array(img_features), np.array(txt_features)
+            img_features.append(img_emb.cpu().numpy())
+            txt_features.append(txt_emb.cpu().numpy())
+    return np.concatenate(img_features, axis=0), np.concatenate(txt_features, axis=0)
 
 
 # Extract for both Train and Test sets
@@ -169,12 +181,10 @@ test_clip_img_features, test_clip_txt_features = extract_clip_features(
 
 """### 5. Train Linear Regression for projecting the visual space into the textual space (Method 2)"""
 
-from sklearn.linear_model import LinearRegression
-
 lin_reg = LinearRegression()
 lin_reg.fit(
     train_resnet_features, train_tfidf_features
-)  # Finding the maping weights "W"
+)  # Finding the mapping weights "W"
 
 projected_test_resnet_features = lin_reg.predict(test_resnet_features)
 
