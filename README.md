@@ -26,10 +26,11 @@ This project uses `uv` to manage packages and `jupytext` to sync between the `.p
 
 ### 1. Install dependencies
 
-Make sure you have `uv` installed, then set up the environment:
+This project requires **Python 3.13+**. Make sure you have `uv` installed, then set up the environment. This installs PyTorch, Transformers, Datasets, scikit-learn, and the plotting/table dependencies:
 ```bash
 uv sync
 ```
+> A CUDA-capable GPU is recommended. Feature extraction runs on the GPU automatically when one is available and falls back to CPU otherwise.
 
 ### 2. Run the Notebook
 You can open `AIO2026_CONQUER_MODULE_1.ipynb` directly in Jupyter, Google Colab, or VS Code to run the code step-by-step.
@@ -40,10 +41,11 @@ uv run python aio2026_conquer_module_1.py
 ```
 
 ### 3. Sync Changes (Optional)
-If you edit the Python file and want to update the notebook:
+If you edit the Python file and want to update the notebook, use `--update` to preserve the existing cell outputs:
 ```bash
-uv run jupytext --to notebook aio2026_conquer_module_1.py -o AIO2026_CONQUER_MODULE_1.ipynb
+uv run jupytext --update --to notebook aio2026_conquer_module_1.py -o AIO2026_CONQUER_MODULE_1.ipynb
 ```
+> Plain `--to notebook` (without `--update`) rewrites the notebook and **discards all saved outputs**.
 
 ## Results Summary
 
