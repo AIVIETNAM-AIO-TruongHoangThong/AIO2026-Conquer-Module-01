@@ -4,6 +4,8 @@ This repository contains a project that compares different methods for matching 
 
 ## Project Overview
 
+[![Project Video](https://img.youtube.com/vi/CljX-IhiE7w/maxresdefault.jpg)](https://youtu.be/CljX-IhiE7w)
+
 The main question of this project is:
 > *How much better is CLIP compared to traditional methods (like feature engineering and linear projection) for matching images with text?*
 
